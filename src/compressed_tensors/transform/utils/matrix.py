@@ -17,7 +17,6 @@ from typing import Optional
 import torch
 from compressed_tensors.transform import TransformLocation
 
-
 __all__ = ["get_transform_size", "apply_transform_weight"]
 
 
@@ -44,6 +43,11 @@ def get_transform_size(
             size = module.num_embeddings
         else:
             size = module.embedding_dim
+    elif isinstance(module, (torch.nn.modules.conv._ConvNd)):
+        if location in (TransformLocation.INPUT, TransformLocation.WEIGHT_INPUT):
+            size = module.in_channels
+        else:
+            size = module.out_channels
     else:
         raise NotImplementedError(f"Transforms on {type(module)} are not supported")
 
@@ -114,8 +118,12 @@ def apply_transform_weight(
             return _multihead_matmul(value, transform_weight.T)
 
         elif location == TransformLocation.WEIGHT_OUTPUT:
+            ori_shape = value.shape
             # equivalent to (value.T @ transform_weight).T
-            return _multihead_matmul(transform_weight.T, value)
+            return _multihead_matmul(
+                transform_weight.T,
+                value.view(ori_shape[0], -1),
+            ).view(ori_shape)
 
         elif location == TransformLocation.OUTPUT:
             return _multihead_matmul(value, transform_weight)

@@ -95,6 +95,8 @@ def initialize_module_for_quantization(
         # use weight to determine observed shapes and dtype
         if hasattr(module, "weight"):
             weight = module.weight
+            if isinstance(module, torch.nn.modules.conv._ConvNd):
+                weight = weight.view(weight.size(0), -1)
             assert isinstance(weight, torch.Tensor)
         else:
             # Note that a weight is required for both weight and activation
