@@ -137,6 +137,25 @@ def apply_transform_weight(
         elif location == TransformLocation.OUTPUT:
             return _multihead_matmul(value, transform_weight)
 
+    elif module_type in (torch.nn.Conv2d, torch.nn.Conv3d, torch.nn.Conv1d):
+        ori_shape = value.shape
+        if location == TransformLocation.INPUT:
+            return _multihead_matmul(value.view(ori_shape[0], -1), transform_weight).view(ori_shape)
+
+        elif location == TransformLocation.WEIGHT_INPUT:
+            # equivalent to (transform_weight @ value.T).T
+            return _multihead_matmul(value.view(ori_shape[0], -1), transform_weight.T).view(ori_shape)
+
+        elif location == TransformLocation.WEIGHT_OUTPUT:
+            return _multihead_matmul(
+                transform_weight.T,
+                value.view(ori_shape[0], -1),
+            ).view(ori_shape)
+
+        elif location == TransformLocation.OUTPUT:
+            return _multihead_matmul(value.view(ori_shape[0], -1), transform_weight).view(ori_shape)
+            
+
     raise NotImplementedError(
         f"Applying transforms to {module_type} {location} is not supported"
     )
