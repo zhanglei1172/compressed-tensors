@@ -37,7 +37,6 @@ from compressed_tensors.utils.internal import InternalModule
 from torch import Tensor
 from torch.nn import Module, Parameter
 
-
 __all__ = ["TransformFactory", "TransformBase"]
 
 
@@ -136,7 +135,12 @@ class TransformFactory(RegistryMixin, ABC):
             assert hasattr(module, "weight")
             with torch.no_grad(), align_module_device(module):
                 update_offload_parameter(module, "weight", transform(module.weight))
-                if args.location == TransformLocation.WEIGHT_OUTPUT and hasattr(module, "bias") and not args.inverse:
+                if (
+                    args.location == TransformLocation.WEIGHT_OUTPUT
+                    and hasattr(module, "bias")
+                    and module.bias is not None
+                    and not args.inverse
+                ):
                     update_offload_parameter(module, "bias", transform(module.bias))
 
             if self.scheme.requires_grad:
