@@ -70,6 +70,8 @@ class RandomMatrixFactory(TransformFactory):
             dtype=precision,
             device=self.generator.device,
         ).to(device)
+        _scale = torch.tensor(size, dtype=torch.float64, device=device).sqrt()
+        data = data / _scale
         return Parameter(data, requires_grad=self.scheme.requires_grad)
 
     def _create_inverse(self, weight: Parameter) -> Parameter:
@@ -108,6 +110,13 @@ class RandomMatrixTransform(TransformBase):
             self.args.location,
             self.module_type,
         ).to(value.dtype)
+
+    def _clear_weights_cache(self):
+        """
+        Clear any cached weights used to create new transforms
+        """
+        self.weights.clear()
+        self.inverses.clear()
 
 
 def high_precision_invert(weight: Tensor) -> Tensor:

@@ -382,6 +382,9 @@ class ParameterizedDefaultDict(dict):
         self._factory_kwargs = MappingProxyType({})
 
     def __missing__(self, key: Any) -> Any:
+        warnings.warn(
+            "New ParameterizedDefaultDict entry with key "f"{key} created", UserWarning, stacklevel=2
+        )
         if isinstance(key, tuple):
             value = self.default_factory(*key, **self._factory_kwargs)
         else:

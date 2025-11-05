@@ -76,11 +76,20 @@ class HadamardFactory(TransformFactory):
     ) -> Parameter:
         data = deterministic_hadamard_matrix(size, precision, construct_device)
         data = data.to(device=device)
+        _scale = torch.tensor(size, dtype=torch.float64, device=device).sqrt()
+        data = data / _scale
         return Parameter(data, requires_grad=self.scheme.requires_grad)
 
     def _create_permutation(self, weight: Parameter) -> Parameter:
         data = torch.randperm(weight.size(0), generator=self.generator)
         return Parameter(data, requires_grad=False)
+
+    def _clear_weights_cache(self):
+        """
+        Clear any cached weights used to create new transforms
+        """
+        self.weights.clear()
+        self.perms.clear()
 
 
 class HadamardTransform(TransformBase):
@@ -100,7 +109,6 @@ class HadamardTransform(TransformBase):
         self.scheme = scheme
         self.args = args
         self.module_type = module_type
-        self._scale = torch.tensor(weight.size(0), dtype=torch.float64).sqrt()
 
     def forward(self, value: Tensor) -> Tensor:
         weight = self.weight
@@ -118,5 +126,4 @@ class HadamardTransform(TransformBase):
                 self.args.location,
                 self.module_type,
             )
-            / self._scale
         ).to(value.dtype)

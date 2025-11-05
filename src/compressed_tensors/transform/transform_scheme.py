@@ -51,5 +51,6 @@ class TransformScheme(BaseModel):
     requires_grad: bool = Field(default=False)
     head_dim: Optional[int] = Field(default=None)
     precision: TorchDtype = Field(default=torch.float32)
+    block_wise: bool = Field(default=False)
 
     model_config = ConfigDict(extra="forbid")

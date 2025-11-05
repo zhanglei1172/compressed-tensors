@@ -109,7 +109,7 @@ def apply_transform_weight(
 
     assert transform_weight.shape[0] == transform_weight.shape[1]
 
-    if module_type == torch.nn.Linear:
+    if issubclass(module_type, torch.nn.Linear):
         if location == TransformLocation.INPUT:
             return _multihead_matmul(value, transform_weight)
 
@@ -129,7 +129,7 @@ def apply_transform_weight(
             return _multihead_matmul(value, transform_weight)
 
     # similar derivation to torch.nn.Linear, but `y = (x W)`
-    elif module_type == torch.nn.Embedding:
+    elif issubclass(module_type, torch.nn.Embedding):
         if location == TransformLocation.INPUT:
             return _multihead_matmul(value, transform_weight)
 
@@ -145,14 +145,18 @@ def apply_transform_weight(
         elif location == TransformLocation.OUTPUT:
             return _multihead_matmul(value, transform_weight)
 
-    elif module_type in (torch.nn.Conv2d, torch.nn.Conv3d, torch.nn.Conv1d):
+    elif issubclass(module_type, (torch.nn.modules.conv._ConvNd)):
         ori_shape = value.shape
         if location == TransformLocation.INPUT:
-            return _multihead_matmul(value.view(ori_shape[0], -1), transform_weight).view(ori_shape)
+            return _multihead_matmul(
+                value.view(ori_shape[0], -1), transform_weight
+            ).view(ori_shape)
 
         elif location == TransformLocation.WEIGHT_INPUT:
             # equivalent to (transform_weight @ value.T).T
-            return _multihead_matmul(value.view(ori_shape[0], -1), transform_weight.T).view(ori_shape)
+            return _multihead_matmul(
+                value.view(ori_shape[0], -1), transform_weight.T
+            ).view(ori_shape)
 
         elif location == TransformLocation.WEIGHT_OUTPUT:
             return _multihead_matmul(
@@ -161,8 +165,9 @@ def apply_transform_weight(
             ).view(ori_shape)
 
         elif location == TransformLocation.OUTPUT:
-            return _multihead_matmul(value.view(ori_shape[0], -1), transform_weight).view(ori_shape)
-            
+            return _multihead_matmul(
+                value.view(ori_shape[0], -1), transform_weight
+            ).view(ori_shape)
 
     raise NotImplementedError(
         f"Applying transforms to {module_type} {location} is not supported"

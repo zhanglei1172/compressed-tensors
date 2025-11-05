@@ -28,12 +28,14 @@ from compressed_tensors.utils import (
     align_module_device,
     delete_offload_module,
     has_offloaded_params,
+    match_modules_set,
     match_named_modules,
     patch_attr,
     register_offload_module,
     update_offload_parameter,
 )
 from compressed_tensors.utils.internal import InternalModule
+from compressed_tensors.utils.offload import delete_from_weights_map
 from torch import Tensor
 from torch.nn import Module, Parameter
 
@@ -88,15 +90,37 @@ class TransformFactory(RegistryMixin, ABC):
 
         :param model: module to apply transforms to
         """
-        modules_args = [
-            (module, arg)
-            for arg in self.scheme.apply
-            for _, module in match_named_modules(model, arg.targets, arg.ignore)
-        ]
-
         desc = f"Applying {self.name} transforms"
-        for module, arg in tqdm.tqdm(modules_args, desc=desc, disable=(not use_tqdm)):
-            self._apply_to_module(module, arg)
+        if self.scheme.block_wise:
+            targets, args = zip(
+                *[(target, arg) for arg in self.scheme.apply for target in arg.targets]
+            )
+            for modules in tqdm.tqdm(
+                match_modules_set(model, targets), desc=desc, disable=(not use_tqdm)
+            ):
+                for module, arg in zip(modules, args):
+                    self._apply_to_module(module, arg)
+
+                self._clear_weights_cache()
+
+        else:
+            modules_args = [
+                (module, arg)
+                for arg in self.scheme.apply
+                for _, module in match_named_modules(model, arg.targets, arg.ignore)
+            ]
+            for module, arg in tqdm.tqdm(
+                modules_args, desc=desc, disable=(not use_tqdm)
+            ):
+                self._apply_to_module(module, arg)
+
+        self._clear_weights_cache()
+
+    def _clear_weights_cache(self):
+        """
+        Clear any cached weights used to create new transforms
+        """
+        raise NotImplementedError()
 
     def _apply_to_module(self, module: Module, args: TransformArgs):
         """
@@ -133,6 +157,7 @@ class TransformFactory(RegistryMixin, ABC):
         ):
             # fuse transform into weight
             assert hasattr(module, "weight")
+            bias = False
             with torch.no_grad(), align_module_device(module):
                 update_offload_parameter(module, "weight", transform(module.weight))
                 if (
@@ -142,13 +167,39 @@ class TransformFactory(RegistryMixin, ABC):
                     and not args.inverse
                 ):
                     update_offload_parameter(module, "bias", transform(module.bias))
+                    bias = True
 
             if self.scheme.requires_grad:
                 # for training, the weight changes with every forward pass
                 # so we can leverage parametrization to propagate the gradient
-                if has_offloaded_params(module):
-                    raise ValueError("Offloaded training is not supported")
-                P.register_parametrization(module, "weight", transform)
+                # if has_offloaded_params(module):
+                #     raise ValueError("Offloaded training is not supported")
+                with align_module_device(module):
+                    clear_offload = True
+                    if "weight" not in module._parameters:
+                        clear_offload = False
+                    P.register_parametrization(module, "weight", transform)
+                    if has_offloaded_params(module):
+                        weights_map = module._hf_hook.weights_map
+                        if clear_offload:
+                            delete_from_weights_map(weights_map, "weight")
+                            weights_map.dataset.all_keys.remove(
+                                f"{weights_map.prefix}weight"
+                            )
+                            module._hf_hook.original_devices.pop("weight", None)
+                    # update_offload_parameter(module, "weight", module.weight)
+                    if bias:
+                        clear_offload = True
+                        if "bias" not in module._parameters:
+                            clear_offload = False
+                        P.register_parametrization(module, "bias", transform)
+                        if has_offloaded_params(module) and clear_offload:
+                            delete_from_weights_map(weights_map, "bias")
+                            weights_map.dataset.all_keys.remove(
+                                f"{weights_map.prefix}bias"
+                            )
+                            module._hf_hook.original_devices.pop("bias", None)
+                        # update_offload_parameter(module, "bias", module.bias)
 
             else:
                 # transform is no longer needed (unfusing is not supported)
