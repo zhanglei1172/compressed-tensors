@@ -204,7 +204,7 @@ def compute_dynamic_scales_and_zp(
 
     return calculate_qparams(min_val, max_val, args, global_scale=global_scale)
 
-
+@torch.compiler.disable()
 def calculate_range(quantization_args: QuantizationArgs, device: str) -> Tuple:
     """
     Calculated the effective quantization range for the given Quantization Args
@@ -214,7 +214,7 @@ def calculate_range(quantization_args: QuantizationArgs, device: str) -> Tuple:
     :return: tuple endpoints for the given quantization range
     """
     if quantization_args.type == QuantizationType.INT:
-        bit_range = 2**quantization_args.num_bits
+        bit_range = 2 ** quantization_args.num_bits
         q_max = torch.tensor(bit_range / 2 - 1, device=device)
         q_min = torch.tensor(-bit_range / 2, device=device)
     elif quantization_args.type == QuantizationType.FLOAT:
