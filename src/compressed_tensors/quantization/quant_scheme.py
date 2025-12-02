@@ -51,6 +51,7 @@ class QuantizationScheme(BaseModel):
     input_activations: Optional[QuantizationArgs] = None
     output_activations: Optional[QuantizationArgs] = None
     format: Optional[str] = None
+    ste: Optional[bool] = False
 
     @model_validator(mode="after")
     def validate_model_after(model: "QuantizationScheme") -> "QuantizationScheme":

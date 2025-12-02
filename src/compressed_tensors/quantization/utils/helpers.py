@@ -107,7 +107,7 @@ def calculate_qparams(
             scales = scales.to(FP8_E4M3_DATA.dtype)
 
         else:
-            scales = max_val_pos / (float(bit_range) / 2)
+            scales = max_val_pos / (bit_range.to(max_val_pos.dtype) / 2)
 
         # TODO: in the case of MoEs, the global_scale may also be 0/need to be clamped
         if scales.dtype == FP8_E4M3_DATA.dtype:
@@ -165,7 +165,7 @@ def compute_dynamic_scales_and_zp(
     """
 
     keep_dims = True
-    if args.strategy == QuantizationStrategy.TOKEN:
+    if args.strategy in (QuantizationStrategy.TOKEN, QuantizationStrategy.CHANNEL):
         dim = {0, 1}
         reduce_dims = tuple(idx for idx in range(value.ndim) if idx not in dim)
     elif args.strategy == QuantizationStrategy.TENSOR:
@@ -190,6 +190,7 @@ def compute_dynamic_scales_and_zp(
             QuantizationStrategy.TENSOR,
             QuantizationStrategy.TENSOR_GROUP,
             QuantizationStrategy.GROUP,
+            QuantizationStrategy.CHANNEL,
         )
         raise ValueError(
             "Dynamic quantization is only supported for ",
@@ -197,7 +198,9 @@ def compute_dynamic_scales_and_zp(
         )
 
     if not reduce_dims:
-        min_val, max_val = torch.aminmax(value)
+        # min_val, max_val = torch.aminmax(value)
+        min_val = torch.amin(value)
+        max_val = torch.amax(value)
     else:
         min_val = torch.amin(value, dim=reduce_dims, keepdims=keep_dims)
         max_val = torch.amax(value, dim=reduce_dims, keepdims=keep_dims)

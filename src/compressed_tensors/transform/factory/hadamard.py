@@ -55,7 +55,7 @@ class HadamardFactory(TransformFactory):
         size = get_transform_size(module, args.location, self.scheme.head_dim)
         exec_device = get_execution_device(module)
         device = get_offloaded_device(module)
-        precision = self.scheme.precision if args.is_online() else torch.float64
+        precision = self.scheme.precision if args.is_online() else (torch.float32 if self.scheme.requires_grad else torch.float64)
 
         factory_kwargs = {
             "device": device,
@@ -76,7 +76,7 @@ class HadamardFactory(TransformFactory):
     ) -> Parameter:
         data = deterministic_hadamard_matrix(size, precision, construct_device)
         data = data.to(device=device)
-        _scale = torch.tensor(size, dtype=torch.float64, device=device).sqrt()
+        _scale = torch.tensor(size, dtype=precision, device=device).sqrt()
         data = data / _scale
         return Parameter(data, requires_grad=self.scheme.requires_grad)
 
@@ -121,8 +121,8 @@ class HadamardTransform(TransformBase):
 
         return (
             apply_transform_weight(
-                weight.to(device=value.device),
-                value.to(dtype=weight.dtype),
+                weight.to(device=value.device, dtype=torch.float64),
+                value.to(dtype=torch.float64),
                 self.args.location,
                 self.module_type,
             )

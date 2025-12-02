@@ -36,6 +36,9 @@ from compressed_tensors.quantization import (
 from compressed_tensors.quantization.lifecycle.forward import (
     wrap_module_forward_quantized,
 )
+from compressed_tensors.quantization.lifecycle.forward_ste import (
+    wrap_module_forward_quantized_ste,
+)
 from compressed_tensors.quantization.utils import is_fp4, strategy_cdiv
 from compressed_tensors.utils import (
     disable_hf_hook,
@@ -140,7 +143,10 @@ def initialize_module_for_quantization(
         with disable_hf_hook(module):
             # wrap forward call of module to perform
             # quantized actions based on calltime status
-            wrap_module_forward_quantized(module, scheme)
+            if scheme.ste:
+                wrap_module_forward_quantized_ste(module, scheme)
+            else:
+                wrap_module_forward_quantized(module, scheme)
 
     module.quantization_scheme = scheme
     module.quantization_status = QuantizationStatus.INITIALIZED

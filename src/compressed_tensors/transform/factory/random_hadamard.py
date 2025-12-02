@@ -38,6 +38,6 @@ class RandomHadamardFactory(HadamardFactory):
     ) -> Parameter:
         data = random_hadamard_matrix(size, precision, construct_device, self.generator)
         data = data.to(device=device)
-        _scale = torch.tensor(size, dtype=torch.float64, device=device).sqrt()
+        _scale = torch.tensor(size, dtype=precision, device=device).sqrt()
         data = data / _scale
         return Parameter(data, requires_grad=self.scheme.requires_grad)

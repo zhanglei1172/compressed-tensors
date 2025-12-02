@@ -324,6 +324,7 @@ class QuantizationArgs(BaseModel, use_enum_values=True):
                 QuantizationStrategy.TENSOR,
                 QuantizationStrategy.TENSOR_GROUP,
                 QuantizationStrategy.GROUP,
+                QuantizationStrategy.CHANNEL,
             )
             if strategy not in supported_strategies:
                 raise ValueError(
@@ -382,7 +383,7 @@ class QuantizationArgs(BaseModel, use_enum_values=True):
 
 
 def round_to_quantized_type(
-    tensor: torch.Tensor, args: QuantizationArgs
+    tensor: torch.Tensor, args: QuantizationArgs, ste: bool = False
 ) -> torch.Tensor:
     """
     Rounds each element of the input tensor to the nearest quantized representation,
@@ -401,7 +402,7 @@ def round_to_quantized_type(
         else:
             raise NotImplementedError("Only num_bits in (4, 8) are supported")
     elif args.type == QuantizationType.INT:
-        rounded = torch.round(tensor)
+        rounded = ((tensor.round() - tensor).detach() + tensor) if ste else torch.round(tensor)
     else:
         raise ValueError(f"Invalid quantization type {args.type}")
 

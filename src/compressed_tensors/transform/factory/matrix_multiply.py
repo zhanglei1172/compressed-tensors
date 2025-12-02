@@ -53,7 +53,7 @@ class RandomMatrixFactory(TransformFactory):
         assert hasattr(module, "weight")
         size = get_transform_size(module, args.location, self.scheme.head_dim)
         device = get_offloaded_device(module)
-        precision = self.scheme.precision if args.is_online() else torch.float64
+        precision = self.scheme.precision if args.is_online() else (torch.float32 if self.scheme.requires_grad else torch.float64)
 
         factory_kwargs = {"device": device, "precision": precision}
         weight = self.weights.get(size, factory_kwargs=factory_kwargs)
@@ -70,7 +70,7 @@ class RandomMatrixFactory(TransformFactory):
             dtype=precision,
             device=self.generator.device,
         ).to(device)
-        _scale = torch.tensor(size, dtype=torch.float64, device=device).sqrt()
+        _scale = torch.tensor(size, dtype=precision, device=device).sqrt()
         data = data / _scale
         return Parameter(data, requires_grad=self.scheme.requires_grad)
 
@@ -105,8 +105,8 @@ class RandomMatrixTransform(TransformBase):
     def right_inverse(self, value: Tensor) -> Tensor:
         inverse = high_precision_invert(self.weight)
         return apply_transform_weight(
-            inverse.to(device=value.device),
-            value.to(dtype=inverse.dtype),
+            inverse.to(device=value.device, dtype=torch.float64),
+            value.to(dtype=torch.float64),
             self.args.location,
             self.module_type,
         ).to(value.dtype)
