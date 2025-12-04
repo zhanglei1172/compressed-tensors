@@ -99,7 +99,13 @@ class TransformFactory(RegistryMixin, ABC):
                 match_modules_set(model, targets), desc=desc, disable=(not use_tqdm)
             ):
                 for module, arg in zip(modules, args):
+                    sequential_onload = not has_offloaded_params(module) and self.scheme.sequential_onload
+                    ori_device = next(module.parameters()).device
+                    if sequential_onload:
+                        module.to("cuda", non_blocking=True)
                     self._apply_to_module(module, arg)
+                    if sequential_onload:
+                        module.to(ori_device, non_blocking=True)
 
                 self._clear_weights_cache()
 
@@ -112,7 +118,13 @@ class TransformFactory(RegistryMixin, ABC):
             for module, arg in tqdm.tqdm(
                 modules_args, desc=desc, disable=(not use_tqdm)
             ):
+                sequential_onload = not has_offloaded_params(module) and self.scheme.sequential_onload
+                ori_device = next(module.parameters()).device
+                if sequential_onload:
+                    module.to("cuda", non_blocking=True)
                 self._apply_to_module(module, arg)
+                if sequential_onload:
+                    module.to(ori_device, non_blocking=True)
 
         self._clear_weights_cache()
 

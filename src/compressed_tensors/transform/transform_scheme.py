@@ -54,3 +54,4 @@ class TransformScheme(BaseModel):
     block_wise: bool = Field(default=False)
 
     model_config = ConfigDict(extra="forbid")
+    sequential_onload: bool = Field(default=False)

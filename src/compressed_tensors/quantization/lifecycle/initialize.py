@@ -96,6 +96,11 @@ def initialize_module_for_quantization(
             _LOGGER.warning(f"Attempting to quantize module of type {type(module)}")
 
         # use weight to determine observed shapes and dtype
+        if hasattr(module, "parametrizations") and "weight" in module.parametrizations: # faster impl
+            weight = module.parametrizations["weight"].original
+            if isinstance(module, torch.nn.modules.conv._ConvNd):
+                weight = weight.view(weight.size(0), -1)
+            assert isinstance(weight, torch.Tensor)
         if hasattr(module, "weight"):
             weight = module.weight
             if isinstance(module, torch.nn.modules.conv._ConvNd):
