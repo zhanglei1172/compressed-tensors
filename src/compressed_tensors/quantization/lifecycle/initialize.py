@@ -24,7 +24,6 @@ from compressed_tensors.modeling import (
     QuantizedKVCache,
 )
 from compressed_tensors.quantization import (
-    FP8_E4M3_DATA,
     ActivationOrdering,
     DynamicType,
     QuantizationArgs,
@@ -39,7 +38,7 @@ from compressed_tensors.quantization.lifecycle.forward import (
 from compressed_tensors.quantization.lifecycle.forward_ste import (
     wrap_module_forward_quantized_ste,
 )
-from compressed_tensors.quantization.utils import is_fp4, strategy_cdiv
+from compressed_tensors.quantization.utils import strategy_cdiv
 from compressed_tensors.utils import (
     disable_hf_hook,
     get_execution_device,
@@ -263,20 +262,13 @@ def initialize_qparams(
 
     # 2. Identify quantization scale and zp dtype
     scale_dtype = observed_dtype
-
-    if is_fp4(quantization_args=quantization_args):
-        scale_dtype = zp_dtype = FP8_E4M3_DATA.dtype
-    else:
-        # TODO: consider erroring out in the future as if the dtype if not one of these,
-        # there is likely bug
-        if scale_dtype not in [
-            torch.float16,
-            torch.bfloat16,
-            torch.float32,
-            torch.float64,
-        ]:
-            scale_dtype = torch.bfloat16
-        zp_dtype = quantization_args.pytorch_dtype()
+    if scale_dtype not in [
+        torch.float16,
+        torch.bfloat16,
+        torch.float32,
+        torch.float64,
+    ]:
+        scale_dtype = torch.float16
 
     # 3. Initializes scale/zp for the module
     init_scale = Parameter(
@@ -287,7 +279,9 @@ def initialize_qparams(
 
     if force_zero_point or not quantization_args.symmetric:
         init_zero_point = Parameter(
-            torch.zeros(expected_shape, device=device, dtype=zp_dtype),
+            torch.zeros(
+                expected_shape, device=device, dtype=quantization_args.zp_dtype
+            ),
             requires_grad=False,
         )
         register_offload_parameter(module, f"{base_name}_zero_point", init_zero_point)

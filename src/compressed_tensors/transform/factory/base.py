@@ -18,6 +18,14 @@ from typing import List, Optional
 import torch
 import torch.nn.utils.parametrize as P
 import tqdm
+from compressed_tensors.modeling.attention import (
+    initialize_hooked_attention,
+    register_query_hook,
+)
+from compressed_tensors.modeling.kvcache import (
+    initialize_hooked_kv_cache,
+    register_key_hook,
+)
 from compressed_tensors.registry.registry import RegistryMixin, T
 from compressed_tensors.transform import (
     TransformArgs,
@@ -38,6 +46,7 @@ from compressed_tensors.utils.internal import InternalModule
 from compressed_tensors.utils.offload import delete_from_weights_map
 from torch import Tensor
 from torch.nn import Module, Parameter
+from transformers import PreTrainedModel
 
 __all__ = ["TransformFactory", "TransformBase"]
 
@@ -103,7 +112,7 @@ class TransformFactory(RegistryMixin, ABC):
                     ori_device = next(module.parameters()).device
                     if sequential_onload:
                         module.to("cuda", non_blocking=True)
-                    self._apply_to_module(module, arg)
+                    self._apply_to_module(model, module, arg)
                     if sequential_onload:
                         module.to(ori_device, non_blocking=True)
 
@@ -122,7 +131,7 @@ class TransformFactory(RegistryMixin, ABC):
                 ori_device = next(module.parameters()).device
                 if sequential_onload:
                     module.to("cuda", non_blocking=True)
-                self._apply_to_module(module, arg)
+                self._apply_to_module(model, module, arg)
                 if sequential_onload:
                     module.to(ori_device, non_blocking=True)
 
@@ -134,10 +143,11 @@ class TransformFactory(RegistryMixin, ABC):
         """
         raise NotImplementedError()
 
-    def _apply_to_module(self, module: Module, args: TransformArgs):
+    def _apply_to_module(self, model: Module, module: Module, args: TransformArgs):
         """
         Create transforms and apply them to the module
 
+        :param model: model which module belongs to
         :param module: target module to apply transforms to
         :param args: defines how the transform will be applied to the target module
         """
@@ -225,7 +235,28 @@ class TransformFactory(RegistryMixin, ABC):
 
             module.register_forward_hook(output_hook)
 
-        # other locations such as q_attn and k_attn have not been implemented
+        # register query hook to attention
+        elif args.location == TransformLocation.Q_ATTN:
+            if not isinstance(model, PreTrainedModel):
+                raise ValueError(f"Cannot hook attention of model: {model}")
+
+            def query_hook(_, query_states):
+                return transform(query_states)
+
+            initialize_hooked_attention(model, module)
+            register_query_hook(module, query_hook)
+
+        # register key hook to kvcache
+        elif args.location == TransformLocation.K_CACHE:
+            if not isinstance(model, PreTrainedModel):
+                raise ValueError(f"Cannot hook attention of model: {model}")
+
+            def key_hook(_, key_states):
+                return transform(key_states)
+
+            initialize_hooked_kv_cache(model, module)
+            register_key_hook(module, key_hook)
+
         else:
             raise NotImplementedError()
 

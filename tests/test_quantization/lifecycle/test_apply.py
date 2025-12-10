@@ -22,6 +22,7 @@ import torch
 from compressed_tensors.config import CompressionFormat
 from compressed_tensors.quantization import (
     DEFAULT_QUANTIZATION_METHOD,
+    FP8_E4M3_DATA,
     QuantizationArgs,
     QuantizationConfig,
     QuantizationScheme,
@@ -153,7 +154,11 @@ def test_apply_quantization_config_tinyllama():
                 "linear": QuantizationScheme(
                     targets=["Linear"],
                     input_activations=QuantizationArgs(
-                        num_bits=8, type="float", strategy="tensor"
+                        num_bits=8,
+                        type="float",
+                        strategy="tensor",
+                        scale_dtype=FP8_E4M3_DATA.dtype,
+                        zp_dtype=torch.float,
                     ),
                 )
             }
@@ -163,7 +168,11 @@ def test_apply_quantization_config_tinyllama():
                 "linear": QuantizationScheme(
                     targets=["Linear"],
                     input_activations=QuantizationArgs(
-                        num_bits=8, type="float", strategy="tensor"
+                        num_bits=8,
+                        type="float",
+                        strategy="tensor",
+                        scale_dtype=FP8_E4M3_DATA.dtype,
+                        zp_dtype=torch.float,
                     ),
                 )
             },
@@ -176,7 +185,11 @@ def test_apply_quantization_config_tinyllama():
         QuantizationConfig(
             config_groups={},
             kv_cache_scheme=QuantizationArgs(
-                num_bits=8, type="float", strategy="tensor"
+                num_bits=8,
+                type="float",
+                strategy="tensor",
+                scale_dtype=FP8_E4M3_DATA.dtype,
+                zp_dtype=torch.float,
             ),
         ),
         QuantizationConfig(
@@ -184,12 +197,20 @@ def test_apply_quantization_config_tinyllama():
                 "attention": QuantizationScheme(
                     targets=["LlamaAttention"],
                     input_activations=QuantizationArgs(
-                        num_bits=8, type="float", strategy="tensor"
+                        num_bits=8,
+                        type="float",
+                        strategy="tensor",
+                        scale_dtype=FP8_E4M3_DATA.dtype,
+                        zp_dtype=torch.float,
                     ),
                 )
             },
             kv_cache_scheme=QuantizationArgs(
-                num_bits=8, type="float", strategy="tensor"
+                num_bits=8,
+                type="float",
+                strategy="tensor",
+                scale_dtype=FP8_E4M3_DATA.dtype,
+                zp_dtype=torch.float,
             ),
         ),
     ],
@@ -448,7 +469,13 @@ def test_apply_kv_cache():
     with init_empty_weights():
         model = AutoModelForCausalLM.from_pretrained("nm-testing/llama2.c-stories15M")
 
-    args = QuantizationArgs(num_bits=8, type="float", strategy="tensor")
+    args = QuantizationArgs(
+        num_bits=8,
+        type="float",
+        strategy="tensor",
+        scale_dtype=FP8_E4M3_DATA.dtype,
+        zp_dtype=torch.float,
+    )
     config = QuantizationConfig(config_groups={}, kv_cache_scheme=args)
 
     apply_quantization_config(model, config)
@@ -468,7 +495,13 @@ def test_apply_attention():
 
     scheme = QuantizationScheme(
         targets=["LlamaAttention"],
-        input_activations=QuantizationArgs(num_bits=8, type="float", strategy="tensor"),
+        input_activations=QuantizationArgs(
+            num_bits=8,
+            type="float",
+            strategy="tensor",
+            scale_dtype=FP8_E4M3_DATA.dtype,
+            zp_dtype=torch.float,
+        ),
     )
     config = QuantizationConfig(config_groups={"attention": scheme})
 

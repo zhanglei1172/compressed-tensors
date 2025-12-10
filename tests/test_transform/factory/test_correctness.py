@@ -22,7 +22,7 @@ from compressed_tensors.transform import (
     apply_transform_config,
 )
 from compressed_tensors.utils import offloaded_dispatch
-from tests.test_transform.conftest import MockAttention
+from tests.test_transform.conftest import MockAttention, MockAttentionModel
 from tests.testing_utils import requires_accelerate, requires_gpu
 
 
@@ -147,7 +147,7 @@ def test_correctness_attention_heads(type, randomize, head_dim, input_batch_size
 
     config = TransformConfig(
         config_groups={
-            "": TransformScheme(
+            "R2": TransformScheme(
                 type=type,
                 randomize=randomize,
                 head_dim=head_dim,
@@ -163,6 +163,42 @@ def test_correctness_attention_heads(type, randomize, head_dim, input_batch_size
     apply_transform_config(attention, config)
 
     output = attention(input)
+    assert torch.allclose(true_output, output, atol=1e-5, rtol=0.0)
+
+
+@pytest.mark.parametrize("type", ("hadamard", "random-hadamard"))
+@pytest.mark.parametrize("randomize", (True, False))
+@pytest.mark.parametrize("head_dim", (4, 8))
+@pytest.mark.parametrize("input_batch_size", (1, 5, 17))
+def test_correctness_query_key_locations(type, randomize, head_dim, input_batch_size):
+    hidden_size = 64
+    num_attention_heads = 8
+
+    model = MockAttentionModel(
+        hidden_size=hidden_size,
+        num_attention_heads=num_attention_heads,
+        num_key_value_heads=head_dim,
+    )
+
+    input = torch.rand(input_batch_size, 5, hidden_size)
+    true_output = model(input)
+
+    config = TransformConfig(
+        config_groups={
+            "R3": TransformScheme(
+                type=type,
+                randomize=randomize,
+                head_dim=head_dim,
+                apply=[
+                    TransformArgs(targets="self_attn", location="q_attn"),
+                    TransformArgs(targets="self_attn", location="k_cache"),
+                ],
+            )
+        }
+    )
+    apply_transform_config(model, config)
+
+    output = model(input)
     assert torch.allclose(true_output, output, atol=1e-5, rtol=0.0)
 
 
