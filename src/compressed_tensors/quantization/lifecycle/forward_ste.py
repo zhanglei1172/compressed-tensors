@@ -22,7 +22,7 @@ from compressed_tensors.quantization.quant_args import (
     DynamicType,
     QuantizationArgs,
     QuantizationStrategy,
-    round_to_quantized_type,
+    round_to_quantized_type_args,
 )
 from compressed_tensors.quantization.quant_config import QuantizationStatus
 from compressed_tensors.quantization.quant_scheme import QuantizationScheme
@@ -492,7 +492,7 @@ def _quantize_ste(
     # if a global scale is optionally provided, use it
     # to further scale the local `scale` parameter
     if global_scale is not None:
-        scale = scale.to(global_scale.dtype) / global_scale
+        scale = scale / global_scale
 
     scaled = x / scale
 
@@ -500,12 +500,9 @@ def _quantize_ste(
         scaled += zero_point.to(x.dtype)
 
     # clamp first because cast isn't guaranteed to be saturated (ie for fp8)
-    clamped_value = torch.clamp(
-        scaled,
-        q_min,
-        q_max,
+    quantized_value = round_to_quantized_type_args(
+        tensor=scaled, args=args, min=q_min, max=q_max, ste=True
     )
-    quantized_value = round_to_quantized_type(clamped_value, args, ste=True)
 
     if dtype is not None:
         quantized_value = quantized_value.to(dtype)
@@ -525,7 +522,7 @@ def _dequantize_ste(
     # if a global scale is optionally provided, use it
     # to further scale the local `scale` parameter
     if global_scale is not None:
-        scale = scale.to(global_scale.dtype) / global_scale
+        scale = scale / global_scale
 
     dequant_value = x_q.to(scale.dtype)
 
