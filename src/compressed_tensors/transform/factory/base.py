@@ -104,17 +104,21 @@ class TransformFactory(RegistryMixin, ABC):
             targets, args = zip(
                 *[(target, arg) for arg in self.scheme.apply for target in arg.targets]
             )
-            for modules in tqdm.tqdm(
+            for modules_all in tqdm.tqdm(
                 match_modules_set(model, targets), desc=desc, disable=(not use_tqdm)
             ):
-                for module, arg in zip(modules, args):
-                    sequential_onload = not has_offloaded_params(module) and self.scheme.sequential_onload
-                    ori_device = next(module.parameters()).device
-                    if sequential_onload:
-                        module.to("cuda", non_blocking=True)
-                    self._apply_to_module(model, module, arg)
-                    if sequential_onload:
-                        module.to(ori_device, non_blocking=True)
+                for modules, arg in zip(modules_all, args):
+                    for module in set(modules):
+                        sequential_onload = (
+                            not has_offloaded_params(module)
+                            and self.scheme.sequential_onload
+                        )
+                        ori_device = next(module.parameters()).device
+                        if sequential_onload:
+                            module.to("cuda", non_blocking=True)
+                        self._apply_to_module(model, module, arg)
+                        if sequential_onload:
+                            module.to(ori_device, non_blocking=True)
 
                 self._clear_weights_cache()
 
@@ -127,7 +131,9 @@ class TransformFactory(RegistryMixin, ABC):
             for module, arg in tqdm.tqdm(
                 modules_args, desc=desc, disable=(not use_tqdm)
             ):
-                sequential_onload = not has_offloaded_params(module) and self.scheme.sequential_onload
+                sequential_onload = (
+                    not has_offloaded_params(module) and self.scheme.sequential_onload
+                )
                 ori_device = next(module.parameters()).device
                 if sequential_onload:
                     module.to("cuda", non_blocking=True)

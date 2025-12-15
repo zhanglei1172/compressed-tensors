@@ -54,9 +54,6 @@ def get_transform_size(
         raise NotImplementedError(
             f"Transforms on {type(module)} are not supported without head_dim"
         )
-    else:
-        raise NotImplementedError(f"Transforms on {type(module)} are not supported")
-
     if head_dim is not None:
         if size is not None and size % head_dim != 0:
             raise ValueError(

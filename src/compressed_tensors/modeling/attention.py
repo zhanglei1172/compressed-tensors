@@ -26,7 +26,6 @@ from transformers import PretrainedConfig, PreTrainedModel
 from transformers.masking_utils import ALL_MASK_ATTENTION_FUNCTIONS
 from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
 
-
 __all__ = [
     "QuantizedAttentionImpl",
     "initialize_hooked_attention",
@@ -117,6 +116,8 @@ def initialize_hooked_attention(model: PreTrainedModel, module: Module):
         ALL_MASK_ATTENTION_FUNCTIONS.register(HOOKED_ATTENTION_NAME, original_mask)
         model.set_attn_implementation(HOOKED_ATTENTION_NAME)
         assert model.config._attn_implementation == HOOKED_ATTENTION_NAME
+    if hasattr(module, "config"):
+        module.config._attn_implementation = HOOKED_ATTENTION_NAME
 
     initialize_hooked_kv_cache(model, module)
 
