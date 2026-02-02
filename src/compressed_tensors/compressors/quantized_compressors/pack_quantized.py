@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
-from typing import Dict, Literal, Optional, Tuple, Union
+from typing import Literal
 
 import torch
 from compressed_tensors.compressors.base import BaseCompressor
@@ -36,7 +36,7 @@ class PackedQuantizationCompressor(BaseQuantizationCompressor):
     """
 
     @property
-    def compression_param_names(self) -> Tuple[str]:
+    def compression_param_names(self) -> tuple[str, ...]:
         """
         Returns a tuple of compression parameter names introduced by
         the compressor during compression
@@ -52,8 +52,8 @@ class PackedQuantizationCompressor(BaseQuantizationCompressor):
     def compression_param_info(
         self,
         weight_shape: torch.Size,
-        quantization_args: Optional[QuantizationArgs] = None,
-    ) -> Dict[str, Tuple[torch.Size, torch.dtype]]:
+        quantization_args: QuantizationArgs | None = None,
+    ) -> dict[str, tuple[torch.Size, torch.dtype]]:
         """
         Creates a dictionary of expected shapes and dtypes for each compression
             parameter used by the compressor
@@ -90,11 +90,11 @@ class PackedQuantizationCompressor(BaseQuantizationCompressor):
         weight: Tensor,
         scale: Tensor,
         quantization_args: QuantizationArgs,
-        zero_point: Optional[Tensor] = None,
-        g_idx: Optional[torch.Tensor] = None,
-        device: Optional[torch.device] = None,
-        global_scale: Optional[torch.Tensor] = None,
-    ) -> Dict[str, torch.Tensor]:
+        zero_point: Tensor | None = None,
+        g_idx: torch.Tensor | None = None,
+        device: torch.device | None = None,
+        global_scale: torch.Tensor | None = None,
+    ) -> dict[str, torch.Tensor]:
         """
         Compresses a single uncompressed weight
 
@@ -146,8 +146,8 @@ class PackedQuantizationCompressor(BaseQuantizationCompressor):
 
     def decompress_weight(
         self,
-        compressed_data: Dict[str, Tensor],
-        quantization_args: Optional[QuantizationArgs] = None,
+        compressed_data: dict[str, Tensor],
+        quantization_args: QuantizationArgs | None = None,
     ) -> torch.Tensor:
         """
         Decompresses a single compressed weight
@@ -175,6 +175,10 @@ class PackedQuantizationCompressor(BaseQuantizationCompressor):
             zero_point = unpack_from_int32(
                 zero_point, num_bits, original_zp_shape, packed_dim=0
             )
+            # Update the compressed_data dict with unpacked zero_point
+            compressed_data["weight_zero_point"] = torch.nn.Parameter(
+                zero_point, requires_grad=False
+            )
 
         decompressed_weight = dequantize(
             x_q=unpacked, scale=scale, zero_point=zero_point, g_idx=g_idx
@@ -186,7 +190,7 @@ class PackedQuantizationCompressor(BaseQuantizationCompressor):
 def pack_to_int32(
     value: torch.Tensor,
     num_bits: int,
-    packed_dim: Union[Literal[0], Literal[1]] = 1,
+    packed_dim: Literal[0, 1] = 1,
 ) -> torch.Tensor:
     """
     Packs a tensor of quantized weights stored in int8 into int32s with padding
@@ -250,7 +254,7 @@ def unpack_from_int32(
     value: torch.Tensor,
     num_bits: int,
     shape: torch.Size,
-    packed_dim: Union[Literal[0], Literal[1]] = 1,
+    packed_dim: Literal[0, 1] = 1,
 ) -> torch.Tensor:
     """
     Unpacks a tensor of packed int32 weights into individual int8s, maintaining the

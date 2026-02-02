@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
+from compressed_tensors.quantization import round_to_quantized_type_dtype
 from compressed_tensors.quantization.utils import (
-    convert_mxfp4_exp_scale,
     generate_mxfp4_scales,
+    maybe_convert_from_mxfp4_exp,
     round_to_power_2,
 )
 
@@ -60,10 +62,17 @@ def test_round_power_2():
     assert torch.equal(rounded, x_rounded)
 
 
-def test_mxfp4_scales_e2e():
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float32])
+def test_mxfp4_scales_e2e(dtype):
+    from compressed_tensors.quantization.quant_args import (
+        QuantizationArgs,
+        QuantizationStrategy,
+        QuantizationType,
+    )
+
     mock_weight = torch.normal(mean=0.0002, std=0.0576, size=(2880, 2880))
 
-    x = mock_weight.reshape(*mock_weight.shape[:-1], -1, 32).to(torch.bfloat16)
+    x = mock_weight.reshape(*mock_weight.shape[:-1], -1, 32).to(dtype)
     min_vals = torch.amin(x, dim=-1)
     max_vals = torch.amax(x, dim=-1)
 
@@ -71,8 +80,19 @@ def test_mxfp4_scales_e2e():
     max_vals = torch.max(max_vals, torch.zeros_like(max_vals))
     block_max = torch.max(torch.abs(min_vals), torch.abs(max_vals))
 
-    scales_generated = generate_mxfp4_scales(block_max)
-    converted_ct = convert_mxfp4_exp_scale(scales_generated)
+    args = QuantizationArgs(
+        num_bits=4,
+        type=QuantizationType.FLOAT,
+        strategy=QuantizationStrategy.GROUP,
+        group_size=32,
+        scale_dtype=torch.uint8,
+        zp_dtype=torch.uint8,
+    )
+
+    scales = generate_mxfp4_scales(block_max)
+    scales = round_to_quantized_type_dtype(scales, dtype=args.scale_dtype)
+
+    converted_ct = maybe_convert_from_mxfp4_exp(args=args, scale=scales)
 
     scales_exp = torch.log2(converted_ct)
     block_max_exp = torch.floor(torch.log2(round_to_power_2(block_max))) - 2

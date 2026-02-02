@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import warnings
 from typing import List, Optional
 
 import torch
@@ -50,6 +51,8 @@ def _get_quant_compression_format(
     is_weight_only = weight_args is not None and input_args is None
 
     if weight_args.num_bits == 4 and weight_args.type == QuantizationType.FLOAT.value:
+        if weight_args.group_size == 32:
+            return CompressionFormat.mxfp4_pack_quantized
         return CompressionFormat.nvfp4_pack_quantized
 
     if is_weight_only:  # w4a16 and w8a16
@@ -66,6 +69,12 @@ def _get_quant_compression_format(
         ):
             # marlin24 kernel only applicable for channel/group quantization
             # Note: vLLM may only support group quant for marlin24
+            warnings.warn(
+                "The marlin24 format is deprecated and will be removed in a "
+                "future release. vLLM no longer supports marlin24 models.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
             return CompressionFormat.marlin_24
         return CompressionFormat.pack_quantized
 

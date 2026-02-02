@@ -13,8 +13,6 @@
 # limitations under the License.
 
 
-from typing import Dict, Optional, Tuple
-
 import torch
 from compressed_tensors.compressors.base import BaseCompressor
 from compressed_tensors.compressors.quantized_compressors.base import (
@@ -48,7 +46,7 @@ class NVFP4PackedCompressor(BaseQuantizationCompressor):
     """
 
     @property
-    def compression_param_names(self) -> Tuple[str]:
+    def compression_param_names(self) -> tuple[str, ...]:
         """
         Returns a tuple of compression parameter names introduced by
         the compressor during compression
@@ -63,8 +61,8 @@ class NVFP4PackedCompressor(BaseQuantizationCompressor):
     def compression_param_info(
         self,
         weight_shape: torch.Size,
-        quantization_args: Optional[QuantizationArgs] = None,
-    ) -> Dict[str, Tuple[torch.Size, torch.dtype]]:
+        quantization_args: QuantizationArgs | None = None,
+    ) -> dict[str, tuple[torch.Size, torch.dtype]]:
         """
         Creates a dictionary of expected shapes and dtypes for each compression
             parameter used by the compressor
@@ -81,16 +79,24 @@ class NVFP4PackedCompressor(BaseQuantizationCompressor):
         }
         return output
 
+    def compress_scale(
+        self,
+        scale: Tensor,
+        quantization_args: QuantizationArgs,
+    ) -> dict[str, torch.Tensor]:
+        assert quantization_args.scale_dtype is not None
+        return scale.to(quantization_args.scale_dtype)
+
     def compress_weight(
         self,
         weight: Tensor,
         scale: Tensor,
         global_scale: Tensor,
         quantization_args: QuantizationArgs,
-        device: Optional[torch.device] = None,
-        zero_point: Optional[torch.Tensor] = None,
-        g_idx: Optional[torch.Tensor] = None,
-    ) -> Dict[str, torch.Tensor]:
+        device: torch.device | None = None,
+        zero_point: torch.Tensor | None = None,
+        g_idx: torch.Tensor | None = None,
+    ) -> dict[str, torch.Tensor]:
         quantized_weight = quantize(
             x=weight,
             scale=scale,
@@ -103,13 +109,15 @@ class NVFP4PackedCompressor(BaseQuantizationCompressor):
         if device is not None:
             weight_packed = weight_packed.to(device)
         compressed_dict["weight_packed"] = weight_packed
-        compressed_dict["weight_scale"] = scale.to(quantization_args.scale_dtype)
+        compressed_dict["weight_scale"] = self.compress_scale(
+            scale=scale, quantization_args=quantization_args
+        )
         return compressed_dict
 
     def decompress_weight(
         self,
-        compressed_data: Dict[str, Tensor],
-        quantization_args: Optional[QuantizationArgs] = None,
+        compressed_data: dict[str, Tensor],
+        quantization_args: QuantizationArgs | None = None,
     ) -> torch.Tensor:
         weight = compressed_data["weight_packed"]
         global_scale = compressed_data["weight_global_scale"]
@@ -117,6 +125,11 @@ class NVFP4PackedCompressor(BaseQuantizationCompressor):
         m, n = weight.shape
         # TODO: use a user provided dequant dtype
         unpacked = unpack_fp4_from_uint8(weight, m, n * 2)
+
+        # decompress scale
+        scale = scale.to(unpacked.dtype)
+        compressed_data["weight_scale"] = torch.nn.Parameter(scale, requires_grad=False)
+
         decompressed_weight = dequantize(
             x_q=unpacked, scale=scale, global_scale=global_scale, dtype=unpacked.dtype
         )
@@ -130,7 +143,21 @@ class MXFP4PackedCompressor(NVFP4PackedCompressor):
     Alias for mxfp4 quantized models
     """
 
-    pass
+    def compress_scale(
+        self,
+        scale: Tensor,
+        quantization_args: QuantizationArgs,
+    ) -> dict[str, torch.Tensor]:
+        assert quantization_args.scale_dtype is not None
+        scale_exp = 127 + torch.floor(torch.log2(scale)).to(torch.int32)
+        return scale_exp.to(quantization_args.scale_dtype)
+
+    def decompress_weight(
+        self,
+        compressed_data: dict[str, Tensor],
+        quantization_args: QuantizationArgs | None = None,
+    ) -> torch.Tensor:
+        raise NotImplementedError("MXFP4 Decompression is currently not supported")
 
 
 @torch.compile(fullgraph=True, dynamic=True)
@@ -187,7 +214,7 @@ kE2M1ToFloat = torch.tensor(
 # reference: : https://github.com/vllm-project/vllm/pull/16362
 @torch.compile(fullgraph=True, dynamic=True)
 def unpack_fp4_from_uint8(
-    a: torch.Tensor, m: int, n: int, dtype: Optional[torch.dtype] = torch.bfloat16
+    a: torch.Tensor, m: int, n: int, dtype: torch.dtype | None = torch.bfloat16
 ) -> torch.Tensor:
     """
     Unpacks uint8 values into fp4. Each uint8 consists of two fp4 values

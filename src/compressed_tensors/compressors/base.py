@@ -13,13 +13,13 @@
 # limitations under the License.
 
 from abc import ABC, abstractmethod
-from typing import Dict, Generator, Optional, Tuple, Union
+from collections.abc import Generator
 
 import torch
 from compressed_tensors.config import SparsityCompressionConfig
 from compressed_tensors.quantization import QuantizationArgs, QuantizationConfig
 from compressed_tensors.registry import RegistryMixin
-from compressed_tensors.utils import has_offloaded_params
+from compressed_tensors.utils import has_offloaded_params, register_offload_parameter
 from torch import Tensor
 from torch.nn import Module
 
@@ -59,15 +59,15 @@ class BaseCompressor(RegistryMixin, ABC):
     """
 
     def __init__(
-        self, config: Union[SparsityCompressionConfig, QuantizationConfig, None] = None
+        self, config: SparsityCompressionConfig | QuantizationConfig | None = None
     ):
         self.config = config
 
     def compression_param_info(
         self,
         weight_shape: torch.Size,
-        quantization_args: Optional[QuantizationArgs] = None,
-    ) -> Dict[str, Tuple[torch.Size, torch.dtype]]:
+        quantization_args: QuantizationArgs | None = None,
+    ) -> dict[str, tuple[torch.Size, torch.dtype]]:
         """
         Creates a dictionary of expected shapes and dtypes for each compression
             parameter used by the compressor
@@ -80,7 +80,7 @@ class BaseCompressor(RegistryMixin, ABC):
 
     @property
     @abstractmethod
-    def compression_param_names(self) -> Tuple[str]:
+    def compression_param_names(self) -> tuple[str, ...]:
         """
         Returns a tuple of compression parameter names introduced by
         the compressor during compression
@@ -90,9 +90,9 @@ class BaseCompressor(RegistryMixin, ABC):
     @abstractmethod
     def compress(
         self,
-        model_state: Dict[str, Tensor],
+        model_state: dict[str, Tensor],
         **kwargs,
-    ) -> Dict[str, Tensor]:
+    ) -> dict[str, Tensor]:
         """
         Compresses a dense state dict
 
@@ -108,7 +108,7 @@ class BaseCompressor(RegistryMixin, ABC):
         path_to_model_or_tensors: str,
         device: str = "cpu",
         **kwargs,
-    ) -> Generator[Tuple[str, Tensor], None, None]:
+    ) -> Generator[tuple[str, Tensor], None, None]:
         """
         Reads a compressed state dict located at path_to_model_or_tensors
         and returns a generator for sequentially decompressing back to a
@@ -122,7 +122,7 @@ class BaseCompressor(RegistryMixin, ABC):
         """
         raise NotImplementedError()
 
-    def compress_module(self, module: Module) -> Optional[Dict[str, torch.Tensor]]:
+    def compress_module(self, module: Module) -> dict[str, torch.Tensor] | None:
         """
         Compresses a single quantized leaf PyTorch module. If the module is not
         quantized, this function has no effect.
@@ -153,7 +153,7 @@ class BaseCompressor(RegistryMixin, ABC):
         self,
         weight: Tensor,
         **kwargs,
-    ) -> Dict[str, torch.Tensor]:
+    ) -> dict[str, torch.Tensor]:
         """
         Compresses a single uncompressed weight
 
@@ -185,12 +185,18 @@ class BaseCompressor(RegistryMixin, ABC):
         for name, parameter in module.named_parameters():
             compressed_data[name] = parameter
 
-        return self.decompress_weight(
+        decompressed_weight = self.decompress_weight(
             compressed_data=compressed_data, quantization_args=quantization_args
         ).to(device)
 
+        for name in ("weight_scale", "weight_zero_point"):
+            if hasattr(module, name):
+                register_offload_parameter(module, name, compressed_data[name])
+
+        return decompressed_weight
+
     def decompress_weight(
-        self, compressed_data: Dict[str, Tensor], **kwargs
+        self, compressed_data: dict[str, Tensor], **kwargs
     ) -> torch.Tensor:
         """
         Decompresses a single compressed weight
