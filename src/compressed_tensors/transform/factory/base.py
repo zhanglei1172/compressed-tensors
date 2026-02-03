@@ -46,6 +46,7 @@ from compressed_tensors.utils.internal import InternalModule
 from compressed_tensors.utils.offload import delete_from_weights_map
 from torch import Tensor
 from torch.nn import Module, Parameter
+from torch.nn.utils.parametrize import is_parametrized
 from transformers import PreTrainedModel
 
 __all__ = ["TransformFactory", "TransformBase"]
@@ -180,14 +181,16 @@ class TransformFactory(RegistryMixin, ABC):
             assert hasattr(module, "weight")
             bias = False
             with torch.no_grad(), align_module_device(module):
-                update_offload_parameter(module, "weight", transform(module.weight))
+                if not is_parametrized(module, "weight"):
+                    update_offload_parameter(module, "weight", transform(module.weight))
                 if (
                     args.location == TransformLocation.WEIGHT_OUTPUT
                     and hasattr(module, "bias")
                     and module.bias is not None
                     and not args.inverse
                 ):
-                    update_offload_parameter(module, "bias", transform(module.bias))
+                    if not is_parametrized(module, "bias"):
+                        update_offload_parameter(module, "bias", transform(module.bias))
                     bias = True
 
             if self.scheme.requires_grad:
@@ -195,34 +198,10 @@ class TransformFactory(RegistryMixin, ABC):
                 # so we can leverage parametrization to propagate the gradient
                 # if has_offloaded_params(module):
                 #     raise ValueError("Offloaded training is not supported")
-                with align_module_device(module):
-                    clear_offload = True
-                    if "weight" not in module._parameters:
-                        clear_offload = False
-                    P.register_parametrization(module, "weight", transform)
-                    if has_offloaded_params(module):
-                        weights_map = module._hf_hook.weights_map
-                        if clear_offload:
-                            delete_from_weights_map(weights_map, "weight")
-                            weights_map.dataset.all_keys.remove(
-                                f"{weights_map.prefix}weight"
-                            )
-                            module._hf_hook.original_devices.pop("weight", None)
-                    # update_offload_parameter(module, "weight", module.weight)
-                    if bias:
-                        clear_offload = True
-                        if "bias" not in module._parameters:
-                            clear_offload = False
-                        P.register_parametrization(module, "bias", transform)
-                        if has_offloaded_params(module) and clear_offload:
-                            delete_from_weights_map(weights_map, "bias")
-                            weights_map.dataset.all_keys.remove(
-                                f"{weights_map.prefix}bias"
-                            )
-                            module._hf_hook.original_devices.pop("bias", None)
-                        # update_offload_parameter(module, "bias", module.bias)
-                if isinstance(module._parameters, OffloadCache):
-                    raise ValueError("Offloaded training is not supported")
+                # with align_module_device(module):
+                P.register_parametrization(module, "weight", transform)
+                if bias:
+                    P.register_parametrization(module, "bias", transform)
 
             else:
                 # transform is no longer needed (unfusing is not supported)
