@@ -16,6 +16,7 @@ import contextlib
 from functools import wraps
 
 import torch
+
 from compressed_tensors.offload.cache.base import OffloadCache
 from compressed_tensors.offload.utils import send_tensors
 
@@ -39,6 +40,11 @@ def offload_module(
     :param offload_device: device used to offload parameters and buffers
     """
     cache_cls = OffloadCache.cls_from_device(offload_device)
+    if isinstance(module._parameters, OffloadCache) or isinstance(
+        module._buffers, OffloadCache
+    ):
+        # already offloaded
+        return module
     module._parameters = cache_cls.from_mapping(module._parameters, onload_device)
     module._buffers = cache_cls.from_mapping(module._buffers, onload_device)
 
