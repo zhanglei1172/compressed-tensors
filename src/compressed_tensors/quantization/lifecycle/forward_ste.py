@@ -494,6 +494,7 @@ def _quantize_ste(
     if global_scale is not None:
         scale = scale / global_scale
 
+    scale = scale.clamp(min=torch.finfo(scale.dtype).eps)
     scaled = x / scale
 
     if zero_point is not None:
