@@ -1,16 +1,5 @@
-# Copyright (c) 2021 - present / Neuralmagic, Inc. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#    http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
 from functools import wraps
 from math import ceil
@@ -27,6 +16,7 @@ from compressed_tensors.quantization.quant_scheme import QuantizationScheme
 from compressed_tensors.quantization.utils import (
     calculate_range,
     compute_dynamic_scales_and_zp,
+    maybe_pad_tensor_for_block_quant,
 )
 from torch.nn import Module
 
@@ -207,24 +197,14 @@ def _process_quantization(
     # quantization
     if args.strategy == QuantizationStrategy.BLOCK:
         original_shape = x.shape
-        rows, cols = x.shape[-2], x.shape[-1]
         block_height, block_width = args.block_structure
 
-        # Ensure exact division (tensor dimensions must be divisible by block size)
-        if rows % block_height != 0:
-            raise ValueError(
-                f"Tensor height {rows} is not divisible by block_height {block_height}."
-                f" Block quantization requires exact division."
-            )
-        if cols % block_width != 0:
-            raise ValueError(
-                f"Tensor width {cols} is not divisible by block_width {block_width}. "
-                f"Block quantization requires exact division."
-            )
+        x = maybe_pad_tensor_for_block_quant(x, args.block_structure)
+        padded_shape = x.shape
 
         # reshape into blocks and transpose to make each block contiguous
-        num_rows_blocks = rows // block_height
-        num_cols_blocks = cols // block_width
+        num_rows_blocks = padded_shape[0] // block_height
+        num_cols_blocks = padded_shape[1] // block_width
         x_blocks = x.reshape(
             num_rows_blocks,
             block_height,
@@ -255,8 +235,11 @@ def _process_quantization(
                 zero_point=zb,
                 global_scale=global_scale,
             )
-        # restore original shape
-        output = x_blocks.transpose(1, 2).reshape(original_shape)
+        # restore padded shape
+        output = x_blocks.transpose(1, 2).reshape(padded_shape)
+        # truncate to original dimensions if padding was applied
+        if original_shape != padded_shape:
+            output = output[tuple([slice(v) for v in original_shape])]
     elif args.strategy in (
         QuantizationStrategy.GROUP,
         QuantizationStrategy.TENSOR_GROUP,
